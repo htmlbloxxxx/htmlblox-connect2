@@ -1,0 +1,1082 @@
+<!DOCTYPE html>
+<html lang="es" class="h-full w-full overflow-hidden">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>HBLOX CONNECT</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.2/peerjs.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', system-ui, -apple-system, sans-serif; touch-action: manipulation; user-select: none; }
+        
+        /* Mirroring mode default for natural interaction (Right hand stays right) */
+        .mirror-video {
+            transform: scaleX(-1) !important;
+            -webkit-transform: scaleX(-1) !important;
+            object-fit: cover;
+        }
+
+        .unmirror-video {
+            transform: scaleX(1) !important;
+            -webkit-transform: scaleX(1) !important;
+            object-fit: cover;
+        }
+
+        .glass-panel {
+            background: rgba(15, 23, 42, 0.88);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+        }
+
+        .draggable-window {
+            position: absolute;
+            z-index: 50;
+            touch-action: none;
+        }
+
+        @keyframes pulseGlow {
+            0%, 100% { box-shadow: 0 0 20px rgba(99, 102, 241, 0.4); }
+            50% { box-shadow: 0 0 35px rgba(99, 102, 241, 0.8); }
+        }
+
+        .glow-box { animation: pulseGlow 3s infinite; }
+        
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-thumb { background: #4f46e5; border-radius: 9999px; }
+    </style>
+</head>
+<body class="bg-slate-950 text-slate-100 h-full w-full overflow-hidden flex flex-col relative">
+
+    <div id="device-modal" class="fixed inset-0 z-50 bg-slate-950/95 backdrop-blur-xl flex items-center justify-center p-4">
+        <div class="glass-panel rounded-3xl max-w-md w-full p-6 text-center shadow-2xl glow-box border border-indigo-500/30">
+            <div class="w-16 h-16 bg-gradient-to-tr from-indigo-600 to-violet-500 text-white rounded-2xl flex items-center justify-center mx-auto mb-4 text-3xl font-black shadow-lg">
+                <i class="fa-solid fa-cube"></i>
+            </div>
+            <h1 class="text-3xl font-black tracking-wider text-white mb-2">HBLOX CONNECT</h1>
+            <p class="text-slate-400 text-sm mb-6">Selecciona tu tipo de dispositivo para ajustar los controles y la interfaz del juego</p>
+            
+            <div class="grid grid-cols-2 gap-4 mb-4">
+                <button onclick="selectDeviceMode('PC')" class="p-4 bg-slate-800/80 hover:bg-indigo-600/30 border border-slate-700 hover:border-indigo-500 rounded-2xl transition flex flex-col items-center group">
+                    <i class="fa-solid fa-desktop text-3xl text-indigo-400 mb-2 group-hover:scale-110 transition"></i>
+                    <span class="font-bold text-white text-sm">PC / Ordenador</span>
+                    <span class="text-[10px] text-slate-400">WASD + Espacio + Click</span>
+                </button>
+                
+                <button onclick="selectDeviceMode('PHONE')" class="p-4 bg-slate-800/80 hover:bg-emerald-600/30 border border-slate-700 hover:border-emerald-500 rounded-2xl transition flex flex-col items-center group">
+                    <i class="fa-solid fa-mobile-screen-button text-3xl text-emerald-400 mb-2 group-hover:scale-110 transition"></i>
+                    <span class="font-bold text-white text-sm">TELÉFONO</span>
+                    <span class="text-[10px] text-slate-400">Joystick + Botones Táctiles</span>
+                </button>
+            </div>
+            <div id="device-detected-tag" class="text-xs font-semibold text-indigo-300 bg-indigo-950/60 py-2 rounded-xl border border-indigo-800/50">
+                Detectando dispositivo...
+            </div>
+        </div>
+    </div>
+
+    <header class="absolute top-0 inset-x-0 h-16 glass-panel border-b border-slate-800/80 px-4 flex items-center justify-between z-40">
+        <div class="flex items-center space-x-3">
+            <button onclick="toggleSidebarMenu()" class="w-10 h-10 bg-slate-800/80 hover:bg-slate-700 text-slate-200 rounded-xl flex items-center justify-center transition border border-slate-700/50">
+                <i class="fa-solid fa-bars text-lg"></i>
+            </button>
+            <div class="flex items-center space-x-2">
+                <div class="w-9 h-9 bg-gradient-to-tr from-indigo-600 to-indigo-400 rounded-xl flex items-center justify-center font-black text-white shadow-md">H</div>
+                <span class="font-black text-lg tracking-wider bg-gradient-to-r from-white via-slate-200 to-indigo-300 bg-clip-text text-transparent">HBLOX <span class="text-indigo-400 text-xs font-bold px-1.5 py-0.5 bg-indigo-950 border border-indigo-800/50 rounded-md ml-1">CONNECT</span></span>
+            </div>
+        </div>
+
+        <div id="room-badge" class="hidden sm:flex items-center space-x-2 bg-slate-900/80 px-3 py-1.5 rounded-full border border-slate-800 text-xs font-semibold">
+            <span class="w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse" id="status-dot"></span>
+            <span id="status-text" class="text-slate-300">Desconectado</span>
+            <span id="peer-count-badge" class="ml-2 px-2 py-0.5 bg-indigo-900/80 text-indigo-300 rounded-full text-[10px] font-bold">1/10</span>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="open-chat-btn" onclick="toggleChatWindow()" class="hidden bg-slate-800 hover:bg-slate-700 text-indigo-300 px-3 py-2 rounded-xl text-xs font-bold transition flex items-center space-x-1.5 border border-slate-700">
+                <i class="fa-solid fa-comments"></i>
+                <span class="hidden md:inline">CHAT</span>
+            </button>
+
+            <button id="open-sound-btn" onclick="toggleSoundboardWindow()" class="hidden bg-slate-800 hover:bg-slate-700 text-amber-400 px-3 py-2 rounded-xl text-xs font-bold transition flex items-center space-x-1.5 border border-slate-700">
+                <i class="fa-solid fa-music"></i>
+                <span class="hidden md:inline">SONIDOS MP3</span>
+            </button>
+
+            <button id="play-game-btn" onclick="requestPlayGame()" class="hidden bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white px-4 py-2 rounded-xl text-xs sm:text-sm font-bold shadow-lg transition flex items-center space-x-2">
+                <i class="fa-solid fa-gamepad"></i>
+                <span>JUGAR 3D</span>
+            </button>
+            
+            <button onclick="confirmExitCall()" class="w-10 h-10 bg-rose-600/20 hover:bg-rose-600 text-rose-400 hover:text-white rounded-xl flex items-center justify-center transition border border-rose-500/30" title="Salir">
+                <i class="fa-solid fa-xmark text-lg"></i>
+            </button>
+        </div>
+    </header>
+
+    <aside id="sidebar-menu" class="fixed inset-y-0 left-0 w-80 glass-panel border-r border-slate-800 z-50 transform -translate-x-full transition-transform duration-300 flex flex-col shadow-2xl">
+        <div class="p-5 border-b border-slate-800 flex items-center justify-between">
+            <h2 class="font-bold text-base text-white flex items-center"><i class="fa-solid fa-sliders text-indigo-400 mr-2"></i> Ajustes & Servidor</h2>
+            <button onclick="toggleSidebarMenu()" class="text-slate-400 hover:text-white"><i class="fa-solid fa-xmark text-xl"></i></button>
+        </div>
+        <div class="p-5 flex-1 overflow-y-auto space-y-6 text-sm">
+            <div>
+                <label class="text-xs font-bold text-slate-400 uppercase tracking-wider block mb-2">Modo de Dispositivo</label>
+                <div id="sidebar-device-mode" class="p-3 bg-slate-900 rounded-xl border border-slate-800 font-bold text-indigo-300 flex items-center justify-between">
+                    <span>PC</span>
+                    <i class="fa-solid fa-desktop"></i>
+                </div>
+            </div>
+
+            <div>
+                <label class="text-xs font-bold text-slate-400 uppercase tracking-wider block mb-2">Espejo de Cámara (Movimiento Natural)</label>
+                <button onclick="toggleCameraMirror()" class="w-full p-3 bg-slate-900 hover:bg-slate-800 rounded-xl border border-slate-800 text-xs text-indigo-300 font-bold flex items-center justify-between transition">
+                    <span id="mirror-status-text">Modo Espejo (Derecha = Derecha)</span>
+                    <i class="fa-solid fa-arrows-rotate"></i>
+                </button>
+            </div>
+
+            <div>
+                <label class="text-xs font-bold text-slate-400 uppercase tracking-wider block mb-2">Imagen Personalizada (Cámara Apagada)</label>
+                <div class="space-y-2">
+                    <input type="file" id="custom-off-img-input" accept="image/*" class="hidden" onchange="handleCustomOffImageUpload(event)">
+                    <button onclick="document.getElementById('custom-off-img-input').click()" class="w-full p-3 bg-indigo-600/20 hover:bg-indigo-600/30 border border-indigo-500/40 text-indigo-300 font-bold rounded-xl text-xs flex items-center justify-center space-x-2 transition">
+                        <i class="fa-solid fa-upload"></i>
+                        <span>Cargar Foto para Cámara Apagada</span>
+                    </button>
+                    <div id="custom-img-preview-tag" class="text-[10px] text-slate-400 text-center italic hidden">Imagen personalizada activa</div>
+                </div>
+            </div>
+
+            <div>
+                <label class="text-xs font-bold text-slate-400 uppercase tracking-wider block mb-2">Información de Sala (Máx. 10)</label>
+                <div class="p-3 bg-slate-900 rounded-xl border border-slate-800 space-y-2 text-xs">
+                    <div>Código Servidor: <span id="sidebar-my-code" class="font-mono text-indigo-400 font-bold">---</span></div>
+                    <div>Conectados: <span id="sidebar-peers-count" class="font-mono text-emerald-400 font-bold">1/10</span></div>
+                </div>
+            </div>
+
+            <div class="pt-4 border-t border-slate-800">
+                <button onclick="leaveCallAndReset()" class="w-full py-3 bg-rose-600/20 hover:bg-rose-600 text-rose-400 hover:text-white font-bold rounded-xl transition flex items-center justify-center space-x-2">
+                    <i class="fa-solid fa-power-off"></i>
+                    <span>Salir de la Llamada</span>
+                </button>
+            </div>
+        </div>
+    </aside>
+    <div id="sidebar-backdrop" onclick="toggleSidebarMenu()" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 hidden"></div>
+
+    <main class="flex-1 w-full h-full relative overflow-hidden bg-slate-950">
+        <!-- Three.js 3D Game Canvas -->
+        <div id="three-canvas-container" class="absolute inset-0 w-full h-full"></div>
+
+        <!-- FPS Display Counter -->
+        <div id="fps-counter" class="absolute top-20 right-4 bg-slate-900/80 backdrop-blur border border-slate-800 px-3 py-1 rounded-xl text-[11px] font-mono text-emerald-400 font-bold z-20 pointer-events-none hidden">
+            FPS: <span id="fps-val">60</span>
+        </div>
+
+        <div id="lobby-modal" class="absolute inset-0 z-30 bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-4">
+            <div class="glass-panel border border-slate-800 rounded-3xl max-w-md w-full p-6 shadow-2xl space-y-6">
+                <div class="text-center space-y-1">
+                    <h2 class="text-2xl font-black text-white">HBLOX CONNECT</h2>
+                    <p class="text-xs text-slate-400">Crea un servidor o únete a una llamada (hasta 10 personas)</p>
+                </div>
+
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-xs font-bold text-slate-400 uppercase mb-2">Código de Servidor</label>
+                        <div class="flex space-x-2">
+                            <input type="text" id="my-room-code-input" placeholder="connect-3422" class="flex-1 bg-slate-950 border border-slate-700 rounded-xl px-4 py-3 text-indigo-300 font-mono text-sm focus:outline-none focus:border-indigo-500 font-bold">
+                            <button onclick="generateRandomRoomCode()" class="bg-slate-800 hover:bg-slate-700 text-indigo-400 px-4 rounded-xl font-bold transition">
+                                <i class="fa-solid fa-rotate"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <button onclick="initHostPeer()" class="w-full py-3.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl shadow-lg transition flex items-center justify-center space-x-2">
+                        <i class="fa-solid fa-satellite-dish"></i>
+                        <span>Crear Servidor</span>
+                    </button>
+
+                    <div class="relative flex py-1 items-center">
+                        <div class="flex-grow border-t border-slate-800"></div>
+                        <span class="flex-shrink mx-4 text-slate-500 text-[10px] uppercase font-bold">O unirse a servidor existente</span>
+                        <div class="flex-grow border-t border-slate-800"></div>
+                    </div>
+
+                    <div>
+                        <label class="block text-xs font-bold text-slate-400 uppercase mb-2">Código de la Sala</label>
+                        <div class="flex space-x-2">
+                            <input type="text" id="target-room-code-input" placeholder="connect-XXXX" class="flex-1 bg-slate-950 border border-slate-700 rounded-xl px-4 py-3 text-white font-mono text-sm focus:outline-none focus:border-indigo-500">
+                            <button onclick="connectToFriendPeer()" class="bg-emerald-600 hover:bg-emerald-500 text-white px-5 rounded-xl font-bold text-sm transition shadow-lg">
+                                Unirse
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="mobile-controls-overlay" class="absolute inset-0 z-30 pointer-events-none hidden flex flex-col justify-between p-6">
+            <div></div>
+            <div class="flex justify-between items-end w-full">
+                <!-- Virtual Joystick (Left) -->
+                <div class="w-36 h-36 bg-slate-900/60 backdrop-blur border border-white/10 rounded-full relative pointer-events-auto flex items-center justify-center touch-none" id="joystick-container">
+                    <div id="joystick-knob" class="w-14 h-14 bg-indigo-600/80 rounded-full border-2 border-indigo-300 shadow-xl transition-transform duration-75"></div>
+                </div>
+
+                <!-- Action Buttons (Right) -->
+                <div class="flex space-x-3 pointer-events-auto">
+                    <button ontouchstart="triggerAttack()" class="w-16 h-16 bg-amber-600 active:bg-amber-500 text-white rounded-full font-black text-xs shadow-2xl flex items-center justify-center border-2 border-amber-300 active:scale-95 transition">
+                        <i class="fa-solid fa-shield-halved text-xl"></i>
+                    </button>
+                    <button ontouchstart="triggerJump(true)" ontouchend="triggerJump(false)" class="w-20 h-20 bg-indigo-600 active:bg-indigo-500 text-white rounded-full font-black text-xs shadow-2xl flex items-center justify-center border-2 border-indigo-300 active:scale-95 transition">
+                        SALTA
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div id="pip-window" class="draggable-window w-72 sm:w-80 glass-panel rounded-2xl overflow-hidden shadow-2xl border border-indigo-500/40 hidden" style="top: 80px; right: 20px;">
+            <div id="pip-header" class="bg-slate-900/90 px-3 py-2 border-b border-slate-800 flex items-center justify-between cursor-move select-none">
+                <div class="flex items-center space-x-2">
+                    <i class="fa-solid fa-video text-indigo-400 text-xs"></i>
+                    <span class="text-xs font-bold text-slate-200 uppercase tracking-wide">LLAMADA EN VIVO</span>
+                </div>
+                <div class="flex items-center space-x-1">
+                    <button onclick="togglePipMinimize()" class="w-6 h-6 hover:bg-slate-800 text-slate-400 hover:text-white rounded flex items-center justify-center text-xs">
+                        <i class="fa-solid fa-minus"></i>
+                    </button>
+                    <button onclick="confirmExitCall()" class="w-6 h-6 hover:bg-rose-600/30 text-rose-400 rounded flex items-center justify-center text-xs">
+                        <i class="fa-solid fa-xmark"></i>
+                    </button>
+                </div>
+            </div>
+
+            <div id="pip-content" class="relative bg-slate-950 aspect-video flex items-center justify-center overflow-hidden">
+                <!-- Remote Stream Video -->
+                <video id="remote-video" autoplay playsinline class="w-full h-full mirror-video"></video>
+                
+                <!-- Remote Camera Off Placeholder -->
+                <div id="remote-off-placeholder" class="absolute inset-0 bg-slate-900 flex flex-col items-center justify-center text-slate-400 space-y-2">
+                    <div class="w-12 h-12 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center text-rose-400">
+                        <i class="fa-solid fa-video-slash text-lg"></i>
+                    </div>
+                    <span class="text-xs font-bold tracking-wider uppercase text-rose-300">CÁMARA APAGADA</span>
+                </div>
+
+                <!-- Local PIP Video (Bottom Right Overlay) -->
+                <div class="absolute bottom-2 right-2 w-24 h-18 bg-slate-900 rounded-xl overflow-hidden border border-indigo-500/50 shadow-md">
+                    <video id="local-video" autoplay playsinline muted class="w-full h-full mirror-video"></video>
+                    
+                    <!-- Local Camera Off Custom Image Placeholder -->
+                    <div id="local-off-placeholder" class="absolute inset-0 bg-slate-900 flex flex-col items-center justify-center text-slate-400 text-center p-1 hidden">
+                        <img id="local-custom-avatar" src="" class="w-full h-full object-cover hidden" alt="Avatar">
+                        <div id="local-default-off-icon" class="flex flex-col items-center justify-center">
+                            <i class="fa-solid fa-video-slash text-xs text-rose-400 mb-1"></i>
+                            <span class="text-[8px] font-bold text-rose-300 uppercase">APAGADA</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="pip-controls" class="bg-slate-900/90 p-2.5 border-t border-slate-800/80 flex items-center justify-around">
+                <button id="btn-toggle-cam" onclick="toggleCameraTrack()" class="w-9 h-9 bg-slate-800 hover:bg-slate-700 text-white rounded-xl flex items-center justify-center transition" title="Cámara">
+                    <i class="fa-solid fa-video text-xs" id="icon-cam"></i>
+                </button>
+                <button id="btn-toggle-mic" onclick="toggleMicTrack()" class="w-9 h-9 bg-slate-800 hover:bg-slate-700 text-white rounded-xl flex items-center justify-center transition" title="Micrófono">
+                    <i class="fa-solid fa-microphone text-xs" id="icon-mic"></i>
+                </button>
+                <button onclick="toggleSidebarMenu()" class="w-9 h-9 bg-slate-800 hover:bg-slate-700 text-indigo-300 rounded-xl flex items-center justify-center transition" title="Ajustes">
+                    <i class="fa-solid fa-gear text-xs"></i>
+                </button>
+                <button onclick="confirmExitCall()" class="w-9 h-9 bg-rose-600 hover:bg-rose-500 text-white rounded-xl flex items-center justify-center transition" title="Colgar">
+                    <i class="fa-solid fa-phone-slash text-xs"></i>
+                </button>
+            </div>
+        </div>
+
+        <div id="chat-window" class="draggable-window w-80 glass-panel rounded-2xl overflow-hidden shadow-2xl border border-indigo-500/30 hidden" style="bottom: 20px; left: 20px;">
+            <div id="chat-header" class="bg-slate-900 px-3 py-2 border-b border-slate-800 flex items-center justify-between cursor-move select-none">
+                <div class="flex items-center space-x-2">
+                    <i class="fa-solid fa-comments text-indigo-400 text-xs"></i>
+                    <span class="text-xs font-bold text-slate-200">CHAT DE LA SALA</span>
+                </div>
+                <button onclick="toggleChatWindow()" class="text-slate-400 hover:text-white text-xs">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+            <div id="chat-messages" class="h-48 p-3 overflow-y-auto space-y-2 text-xs">
+                <div class="text-[10px] text-slate-500 text-center">--- Mensajes de la sala ---</div>
+            </div>
+            <div class="p-2 bg-slate-900/90 border-t border-slate-800 flex space-x-2">
+                <input type="text" id="chat-input" placeholder="Escribe un mensaje..." onkeypress="if(event.key==='Enter') sendChatMessage()" class="flex-1 bg-slate-950 border border-slate-700 rounded-xl px-3 py-1.5 text-xs text-white focus:outline-none focus:border-indigo-500">
+                <button onclick="sendChatMessage()" class="bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1.5 rounded-xl text-xs font-bold">
+                    <i class="fa-solid fa-paper-plane"></i>
+                </button>
+            </div>
+        </div>
+
+        <div id="soundboard-window" class="draggable-window w-80 glass-panel rounded-2xl overflow-hidden shadow-2xl border border-amber-500/30 hidden" style="bottom: 20px; right: 20px;">
+            <div id="soundboard-header" class="bg-slate-900 px-3 py-2 border-b border-slate-800 flex items-center justify-between cursor-move select-none">
+                <div class="flex items-center space-x-2">
+                    <i class="fa-solid fa-music text-amber-400 text-xs"></i>
+                    <span class="text-xs font-bold text-slate-200">SONIDOS MP3 MULTIMEDIA</span>
+                </div>
+                <button onclick="toggleSoundboardWindow()" class="text-slate-400 hover:text-white text-xs">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+            <div class="p-3 space-y-3">
+                <label class="block text-[10px] font-bold text-slate-400 uppercase">Añadir Archivo MP3</label>
+                <input type="file" id="mp3-file-input" accept="audio/mp3,audio/*" class="hidden" onchange="handleMp3Upload(event)">
+                <button onclick="document.getElementById('mp3-file-input').click()" class="w-full py-2 bg-amber-600/20 hover:bg-amber-600/30 border border-amber-500/40 text-amber-300 font-bold rounded-xl text-xs flex items-center justify-center space-x-2 transition">
+                    <i class="fa-solid fa-plus"></i>
+                    <span>Cargar Audio MP3</span>
+                </button>
+
+                <div id="mp3-list" class="space-y-1.5 max-h-36 overflow-y-auto pt-1">
+                    <div class="text-[10px] text-slate-500 text-center py-2">No hay audios cargados</div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <div id="game-invitation-modal" class="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4 hidden">
+        <div class="glass-panel border border-indigo-500/30 rounded-3xl max-w-sm w-full p-6 text-center shadow-2xl space-y-4">
+            <div class="w-14 h-14 bg-emerald-600/20 text-emerald-400 rounded-2xl flex items-center justify-center mx-auto text-2xl font-black">
+                <i class="fa-solid fa-gamepad"></i>
+            </div>
+            <h3 class="text-xl font-black text-white">¡Invitación al Juego 3D!</h3>
+            <p class="text-xs text-slate-300">Un miembro de la llamada quiere jugar en el mundo 3D de <strong>HBLOX CONNECT</strong>.</p>
+            <div class="flex space-x-3 pt-2">
+                <button onclick="declineGameInvite()" class="flex-1 py-3 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold rounded-xl text-xs transition">Rechazar</button>
+                <button onclick="acceptGameInvite()" class="flex-1 py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl text-xs shadow-lg transition">Aceptar y Entrar</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // App State
+        let deviceMode = 'PC';
+        let isMirrorActive = true;
+        let peer = null;
+        let peerConnections = {}; // Multi-peer connections table (Up to 10)
+        let activeCalls = {};
+        let localStream = null;
+        let isCamEnabled = true;
+        let isMicEnabled = true;
+        let customOffImgData = null;
+
+        // Soundboard items
+        let audioFiles = [];
+
+        // Three.js Game Engine Engine State
+        let isGameStarted = false;
+        let scene, camera, renderer;
+        let localPlayerMesh, remotePlayerMeshes = {};
+        let obstacles = []; // Colliders
+        let localPlayerState = { x: 0, y: 0, z: 0, rotY: 0, isJumping: false, isMoving: false, isAttacking: false };
+        let velocityY = 0;
+        let isGrounded = true;
+        let keys = {};
+        let joystickVector = { x: 0, y: 0 };
+        let swordMesh = null;
+        let swordSwingAngle = 0;
+
+        // FPS tracking
+        let frameCount = 0, fpsVal = 60, lastFpsTime = performance.now();
+
+        window.addEventListener('load', () => {
+            detectDeviceType();
+            initDraggableWindows();
+            init3DScene();
+        });
+
+        function detectDeviceType() {
+            const isTouch = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0) || window.innerWidth < 768;
+            const tag = document.getElementById('device-detected-tag');
+            tag.innerText = isTouch ? "Dispositivo detectado: TELÉFONO" : "Dispositivo detectado: PC / ESCRITORIO";
+        }
+
+        function selectDeviceMode(mode) {
+            deviceMode = mode;
+            document.getElementById('sidebar-device-mode').innerHTML = mode === 'PHONE' ? 
+                `<span>TELÉFONO</span><i class="fa-solid fa-mobile-screen"></i>` : 
+                `<span>PC</span><i class="fa-solid fa-desktop"></i>`;
+
+            document.getElementById('device-modal').classList.add('hidden');
+            generateRandomRoomCode();
+
+            if (deviceMode === 'PHONE') {
+                document.getElementById('mobile-controls-overlay').classList.remove('hidden');
+                setupMobileJoystick();
+            }
+        }
+
+        function generateRandomRoomCode() {
+            const rand = Math.floor(1000 + Math.random() * 9000);
+            document.getElementById('my-room-code-input').value = `connect-${rand}`;
+        }
+
+        function toggleSidebarMenu() {
+            const sidebar = document.getElementById('sidebar-menu');
+            const backdrop = document.getElementById('sidebar-backdrop');
+            const isOpen = sidebar.classList.contains('translate-x-0');
+
+            if (isOpen) {
+                sidebar.classList.remove('translate-x-0');
+                sidebar.classList.add('-translate-x-full');
+                backdrop.classList.add('hidden');
+            } else {
+                sidebar.classList.remove('-translate-x-full');
+                sidebar.classList.add('translate-x-0');
+                backdrop.classList.remove('hidden');
+            }
+        }
+
+        // --- STREAMING_CHUNK:Camera Mirroring & Media Handlers... ---
+        function toggleCameraMirror() {
+            isMirrorActive = !isMirrorActive;
+            const videos = document.querySelectorAll('#local-video, #remote-video');
+            videos.forEach(v => {
+                if (isMirrorActive) {
+                    v.classList.remove('unmirror-video');
+                    v.classList.add('mirror-video');
+                } else {
+                    v.classList.remove('mirror-video');
+                    v.classList.add('unmirror-video');
+                }
+            });
+
+            document.getElementById('mirror-status-text').innerText = isMirrorActive ? 
+                "Modo Espejo (Derecha = Derecha)" : "Modo Normal";
+        }
+
+        function handleCustomOffImageUpload(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(evt) {
+                customOffImgData = evt.target.result;
+                const img = document.getElementById('local-custom-avatar');
+                img.src = customOffImgData;
+                img.classList.remove('hidden');
+                document.getElementById('local-default-off-icon').classList.add('hidden');
+                document.getElementById('custom-img-preview-tag').classList.remove('hidden');
+            };
+            reader.readAsDataURL(file);
+        }
+
+        async function getMediaStream() {
+            try {
+                localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+                document.getElementById('local-video').srcObject = localStream;
+            } catch (err) {
+                console.warn('Media access warning:', err);
+            }
+        }
+
+        // --- STREAMING_CHUNK:PeerJS Multi-Participant Networking (Up to 10)... ---
+        async function initHostPeer() {
+            const code = document.getElementById('my-room-code-input').value.trim();
+            if (!code) return alert('Ingresa un código válido');
+
+            await getMediaStream();
+
+            peer = new Peer(code);
+
+            peer.on('open', (id) => {
+                document.getElementById('sidebar-my-code').innerText = id;
+                updateStatusBadge('Servidor Creado', 'bg-emerald-500');
+                showCallUI();
+            });
+
+            peer.on('connection', (conn) => {
+                if (Object.keys(peerConnections).length >= 9) {
+                    conn.close(); // Max 10 limit
+                    return;
+                }
+                registerPeerConnection(conn);
+            });
+
+            peer.on('call', (call) => {
+                call.answer(localStream);
+                setupCallHandlers(call);
+            });
+        }
+
+        async function connectToFriendPeer() {
+            const targetCode = document.getElementById('target-room-code-input').value.trim();
+            if (!targetCode) return alert('Ingresa el código del servidor');
+
+            await getMediaStream();
+
+            const myId = 'connect-' + Math.floor(1000 + Math.random() * 9000);
+            peer = new Peer(myId);
+
+            peer.on('open', (id) => {
+                document.getElementById('sidebar-my-code').innerText = id;
+
+                const conn = peer.connect(targetCode);
+                registerPeerConnection(conn);
+
+                const call = peer.call(targetCode, localStream);
+                setupCallHandlers(call);
+
+                showCallUI();
+                updateStatusBadge('Conectado a ' + targetCode, 'bg-emerald-500');
+            });
+        }
+
+        function registerPeerConnection(conn) {
+            peerConnections[conn.peer] = conn;
+            updatePeerCountBadge();
+
+            conn.on('data', (data) => handleIncomingData(data, conn.peer));
+            conn.on('close', () => {
+                delete peerConnections[conn.peer];
+                if (remotePlayerMeshes[conn.peer]) {
+                    scene.remove(remotePlayerMeshes[conn.peer]);
+                    delete remotePlayerMeshes[conn.peer];
+                }
+                updatePeerCountBadge();
+            });
+        }
+
+        function setupCallHandlers(call) {
+            activeCalls[call.peer] = call;
+            call.on('stream', (remoteStream) => {
+                const remoteVid = document.getElementById('remote-video');
+                remoteVid.srcObject = remoteStream;
+                document.getElementById('remote-off-placeholder').classList.add('hidden');
+            });
+        }
+
+        function handleIncomingData(data, fromPeer) {
+            if (data.type === 'GAME_INVITE') {
+                document.getElementById('game-invitation-modal').classList.remove('hidden');
+            } else if (data.type === 'CHAT_MSG') {
+                appendChatMessage(fromPeer.slice(-4), data.text);
+            } else if (data.type === 'SYNC_PLAYER') {
+                updateRemotePlayerPosition(fromPeer, data.state);
+            } else if (data.type === 'PLAY_MP3') {
+                playBroadcastedAudio(data.audioData);
+            }
+        }
+
+        function updatePeerCountBadge() {
+            const count = Object.keys(peerConnections).length + 1;
+            document.getElementById('peer-count-badge').innerText = `${count}/10`;
+            document.getElementById('sidebar-peers-count').innerText = `${count}/10`;
+        }
+
+        function showCallUI() {
+            document.getElementById('lobby-modal').classList.add('hidden');
+            document.getElementById('pip-window').classList.remove('hidden');
+            document.getElementById('play-game-btn').classList.remove('hidden');
+            document.getElementById('open-chat-btn').classList.remove('hidden');
+            document.getElementById('open-sound-btn').classList.remove('hidden');
+            document.getElementById('fps-counter').classList.remove('hidden');
+        }
+
+        function updateStatusBadge(text, colorClass) {
+            document.getElementById('status-text').innerText = text;
+            const dot = document.getElementById('status-dot');
+            dot.className = `w-2.5 h-2.5 rounded-full ${colorClass} animate-pulse`;
+        }
+
+        function toggleCameraTrack() {
+            if (!localStream) return;
+            isCamEnabled = !isCamEnabled;
+            localStream.getVideoTracks().forEach(t => t.enabled = isCamEnabled);
+            
+            const btn = document.getElementById('btn-toggle-cam');
+            const icon = document.getElementById('icon-cam');
+            const placeholder = document.getElementById('local-off-placeholder');
+
+            if (isCamEnabled) {
+                btn.className = "w-9 h-9 bg-slate-800 hover:bg-slate-700 text-white rounded-xl flex items-center justify-center transition";
+                icon.className = "fa-solid fa-video text-xs";
+                placeholder.classList.add('hidden');
+            } else {
+                btn.className = "w-9 h-9 bg-rose-600 text-white rounded-xl flex items-center justify-center transition";
+                icon.className = "fa-solid fa-video-slash text-xs";
+                placeholder.classList.remove('hidden');
+            }
+        }
+
+        function toggleMicTrack() {
+            if (!localStream) return;
+            isMicEnabled = !isMicEnabled;
+            localStream.getAudioTracks().forEach(t => t.enabled = isMicEnabled);
+
+            const btn = document.getElementById('btn-toggle-mic');
+            const icon = document.getElementById('icon-mic');
+
+            if (isMicEnabled) {
+                btn.className = "w-9 h-9 bg-slate-800 hover:bg-slate-700 text-white rounded-xl flex items-center justify-center transition";
+                icon.className = "fa-solid fa-microphone text-xs";
+            } else {
+                btn.className = "w-9 h-9 bg-rose-600 text-white rounded-xl flex items-center justify-center transition";
+                icon.className = "fa-solid fa-microphone-slash text-xs";
+            }
+        }
+
+        function leaveCallAndReset() {
+            if (localStream) localStream.getTracks().forEach(t => t.stop());
+            if (peer) peer.destroy();
+            window.location.reload();
+        }
+
+        function confirmExitCall() {
+            if (confirm('¿Deseas salir de la llamada?')) leaveCallAndReset();
+        }
+
+        // --- STREAMING_CHUNK:Chat & Soundboard Draggable Windows... ---
+        function initDraggableWindows() {
+            setupWindowDrag('pip-window', 'pip-header');
+            setupWindowDrag('chat-window', 'chat-header');
+            setupWindowDrag('soundboard-window', 'soundboard-header');
+        }
+
+        function setupWindowDrag(winId, headerId) {
+            const win = document.getElementById(winId);
+            const header = document.getElementById(headerId);
+            let isDragging = false, startX, startY, initialLeft, initialTop;
+
+            header.addEventListener('mousedown', (e) => {
+                isDragging = true;
+                startX = e.clientX;
+                startY = e.clientY;
+                const rect = win.getBoundingClientRect();
+                initialLeft = rect.left;
+                initialTop = rect.top;
+            });
+
+            document.addEventListener('mousemove', (e) => {
+                if (!isDragging) return;
+                win.style.left = `${initialLeft + (e.clientX - startX)}px`;
+                win.style.top = `${initialTop + (e.clientY - startY)}px`;
+                win.style.right = 'auto';
+                win.style.bottom = 'auto';
+            });
+
+            document.addEventListener('mouseup', () => isDragging = false);
+        }
+
+        function togglePipMinimize() {
+            document.getElementById('pip-content').classList.toggle('hidden');
+            document.getElementById('pip-controls').classList.toggle('hidden');
+        }
+
+        function toggleChatWindow() {
+            document.getElementById('chat-window').classList.toggle('hidden');
+        }
+
+        function toggleSoundboardWindow() {
+            document.getElementById('soundboard-window').classList.toggle('hidden');
+        }
+
+        function sendChatMessage() {
+            const input = document.getElementById('chat-input');
+            const txt = input.value.trim();
+            if (!txt) return;
+
+            appendChatMessage('Tú', txt);
+            broadcastData({ type: 'CHAT_MSG', text: txt });
+            input.value = '';
+        }
+
+        function appendChatMessage(sender, text) {
+            const box = document.getElementById('chat-messages');
+            const msg = document.createElement('div');
+            msg.className = "p-1.5 rounded-lg bg-slate-900 border border-slate-800";
+            msg.innerHTML = `<span class="font-bold text-indigo-400">${sender}:</span> <span class="text-slate-200">${text}</span>`;
+            box.appendChild(msg);
+            box.scrollTop = box.scrollHeight;
+        }
+
+        function handleMp3Upload(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(evt) {
+                const item = { name: file.name, data: evt.target.result };
+                audioFiles.push(item);
+                renderAudioList();
+            };
+            reader.readAsDataURL(file);
+        }
+
+        function renderAudioList() {
+            const list = document.getElementById('mp3-list');
+            list.innerHTML = '';
+            audioFiles.forEach((file, idx) => {
+                const btn = document.createElement('button');
+                btn.className = "w-full p-2 bg-slate-900 hover:bg-slate-800 border border-slate-800 rounded-xl text-left text-xs text-amber-300 font-bold flex items-center justify-between transition";
+                btn.innerHTML = `<span class="truncate max-w-[180px]"><i class="fa-solid fa-play mr-2 text-[10px]"></i>${file.name}</span><i class="fa-solid fa-bullhorn text-xs"></i>`;
+                btn.onclick = () => playAndBroadcastAudio(file.data);
+                list.appendChild(btn);
+            });
+        }
+
+        function playAndBroadcastAudio(base64Data) {
+            playBroadcastedAudio(base64Data);
+            broadcastData({ type: 'PLAY_MP3', audioData: base64Data });
+        }
+
+        function playBroadcastedAudio(base64Data) {
+            const audio = new Audio(base64Data);
+            audio.play().catch(e => console.warn('Audio play blocked:', e));
+        }
+
+        function broadcastData(data) {
+            Object.values(peerConnections).forEach(conn => {
+                if (conn.open) conn.send(data);
+            });
+        }
+
+        function requestPlayGame() {
+            isGameStarted = true;
+            broadcastData({ type: 'GAME_INVITE' });
+            alert('¡El juego 3D se ha activado!');
+        }
+
+        function declineGameInvite() {
+            document.getElementById('game-invitation-modal').classList.add('hidden');
+        }
+
+        function acceptGameInvite() {
+            isGameStarted = true;
+            document.getElementById('game-invitation-modal').classList.add('hidden');
+        }
+
+        // --- STREAMING_CHUNK:Three.js 3D Voxel World, Physics, Collisions & Sword Attack... ---
+        function init3DScene() {
+            const container = document.getElementById('three-canvas-container');
+
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x0f172a);
+            scene.fog = new THREE.FogExp2(0x0f172a, 0.015);
+
+            camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            container.appendChild(renderer.domElement);
+
+            // Lighting
+            const ambient = new THREE.AmbientLight(0xffffff, 0.6);
+            scene.add(ambient);
+
+            const sun = new THREE.DirectionalLight(0xffffff, 0.9);
+            sun.position.set(30, 50, 20);
+            sun.castShadow = true;
+            sun.shadow.mapSize.width = 1024;
+            sun.shadow.mapSize.height = 1024;
+            scene.add(sun);
+
+            // Terrain Platform Floor
+            const floorGeo = new THREE.BoxGeometry(100, 2, 100);
+            const floorMat = new THREE.MeshStandardMaterial({ color: 0x15803d, roughness: 0.8 }); // Grass green
+            const floor = new THREE.Mesh(floorGeo, floorMat);
+            floor.position.y = -1; // Top face aligned at y=0
+            floor.receiveShadow = true;
+            scene.add(floor);
+
+            // Add Stone Boundary Walls & Colliders
+            buildMapBoundaryWalls();
+
+            // Local Player
+            localPlayerMesh = createBlockyAvatar(0x4f46e5, true);
+            localPlayerMesh.position.set(0, 0, 0);
+            scene.add(localPlayerMesh);
+
+            // Event Listeners
+            window.addEventListener('keydown', (e) => {
+                keys[e.code] = true;
+                if (e.code === 'Space') triggerJump(true);
+            });
+            window.addEventListener('keyup', (e) => keys[e.code] = false);
+            window.addEventListener('mousedown', (e) => {
+                if (e.button === 0 && isGameStarted) triggerAttack();
+            });
+
+            window.addEventListener('resize', onResize);
+            animate3DWorld();
+        }
+
+        function buildMapBoundaryWalls() {
+            const wallMat = new THREE.MeshStandardMaterial({ color: 0x475569, roughness: 0.5 });
+            const wallGeom = new THREE.BoxGeometry(100, 8, 2);
+
+            const wallPositions = [
+                { x: 0, z: -50, rotY: 0 },
+                { x: 0, z: 50, rotY: 0 },
+                { x: -50, z: 0, rotY: Math.PI / 2 },
+                { x: 50, z: 0, rotY: Math.PI / 2 }
+            ];
+
+            wallPositions.forEach(p => {
+                const w = new THREE.Mesh(wallGeom, wallMat);
+                w.position.set(p.x, 4, p.z);
+                w.rotation.y = p.rotY;
+                w.castShadow = true;
+                w.receiveShadow = true;
+                scene.add(w);
+
+                // Store bounding box collider
+                obstacles.push(new THREE.Box3().setFromObject(w));
+            });
+
+            // Center Obstacle Blocks
+            for (let i = 0; i < 6; i++) {
+                const boxGeo = new THREE.BoxGeometry(4, 4, 4);
+                const b = new THREE.Mesh(boxGeo, wallMat);
+                const rx = (i - 2.5) * 12;
+                b.position.set(rx, 2, -10);
+                b.castShadow = true;
+                b.receiveShadow = true;
+                scene.add(b);
+                obstacles.push(new THREE.Box3().setFromObject(b));
+            }
+        }
+
+        function createBlockyAvatar(colorHex, withSword = false) {
+            const group = new THREE.Group();
+            const mat = new THREE.MeshStandardMaterial({ color: colorHex, roughness: 0.3 });
+
+            // Torso
+            const torso = new THREE.Mesh(new THREE.BoxGeometry(1.2, 1.6, 0.8), mat);
+            torso.position.y = 1.8;
+            torso.castShadow = true;
+            group.add(torso);
+
+            // Head
+            const head = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshStandardMaterial({ color: 0xfde047 }));
+            head.position.y = 3.1;
+            head.castShadow = true;
+            group.add(head);
+
+            // Legs
+            const limbMat = new THREE.MeshStandardMaterial({ color: 0x1e293b });
+            const leftLeg = new THREE.Mesh(new THREE.BoxGeometry(0.4, 1.2, 0.4), limbMat);
+            leftLeg.position.set(-0.35, 0.6, 0);
+            leftLeg.name = 'leftLeg';
+            group.add(leftLeg);
+
+            const rightLeg = new THREE.Mesh(new THREE.BoxGeometry(0.4, 1.2, 0.4), limbMat);
+            rightLeg.position.set(0.35, 0.6, 0);
+            rightLeg.name = 'rightLeg';
+            group.add(rightLeg);
+
+            // Sword Attachment
+            if (withSword) {
+                const sGroup = new THREE.Group();
+                const blade = new THREE.Mesh(new THREE.BoxGeometry(0.15, 1.5, 0.3), new THREE.MeshStandardMaterial({ color: 0xe2e8f0, metalness: 0.8 }));
+                blade.position.y = 0.75;
+                const hilt = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.15, 0.2), new THREE.MeshStandardMaterial({ color: 0x78350f }));
+                sGroup.add(blade);
+                sGroup.add(hilt);
+
+                sGroup.position.set(0.8, 1.8, 0.4);
+                sGroup.rotation.x = Math.PI / 4;
+                sGroup.name = 'swordGroup';
+                group.add(sGroup);
+                swordMesh = sGroup;
+            }
+
+            return group;
+        }
+
+        function updateRemotePlayerPosition(peerId, state) {
+            if (!remotePlayerMeshes[peerId]) {
+                const newAvatar = createBlockyAvatar(0x10b981, true);
+                scene.add(newAvatar);
+                remotePlayerMeshes[peerId] = newAvatar;
+            }
+            const mesh = remotePlayerMeshes[peerId];
+            mesh.position.set(state.x, state.y, state.z);
+            mesh.rotation.y = state.rotY;
+            animateAvatarLegs(mesh, state.isMoving);
+        }
+
+        function triggerJump(isPressed) {
+            if (isPressed && isGrounded) {
+                velocityY = 0.28;
+                isGrounded = false;
+                localPlayerState.isJumping = true;
+            }
+        }
+
+        function triggerAttack() {
+            localPlayerState.isAttacking = true;
+            swordSwingAngle = Math.PI / 2;
+        }
+
+        function animate3DWorld() {
+            requestAnimationFrame(animate3DWorld);
+
+            // Measure FPS
+            frameCount++;
+            const now = performance.now();
+            if (now - lastFpsTime >= 1000) {
+                fpsVal = frameCount;
+                frameCount = 0;
+                lastFpsTime = now;
+                document.getElementById('fps-val').innerText = fpsVal;
+            }
+
+            const speed = 0.14;
+            let moveX = 0, moveZ = 0;
+
+            if (keys['KeyW'] || keys['ArrowUp']) moveZ -= speed;
+            if (keys['KeyS'] || keys['ArrowDown']) moveZ += speed;
+            if (keys['KeyA'] || keys['ArrowLeft']) moveX -= speed;
+            if (keys['KeyD'] || keys['ArrowRight']) moveX += speed;
+
+            if (joystickVector.x !== 0 || joystickVector.y !== 0) {
+                moveX = joystickVector.x * speed;
+                moveZ = joystickVector.y * speed;
+            }
+
+            localPlayerState.isMoving = (moveX !== 0 || moveZ !== 0);
+
+            // Calculate potential new position
+            const nextX = localPlayerMesh.position.x + moveX;
+            const nextZ = localPlayerMesh.position.z + moveZ;
+
+            // Wall Collision Check (Player Bounding Box)
+            const playerBox = new THREE.Box3().setFromCenterAndSize(
+                new THREE.Vector3(nextX, localPlayerMesh.position.y + 1.5, nextZ),
+                new THREE.Vector3(1.2, 2.8, 1.2)
+            );
+
+            let collides = false;
+            for (let obs of obstacles) {
+                if (playerBox.intersectsBox(obs)) {
+                    collides = true;
+                    break;
+                }
+            }
+
+            if (!collides) {
+                localPlayerMesh.position.x = nextX;
+                localPlayerMesh.position.z = nextZ;
+            }
+
+            if (localPlayerState.isMoving) {
+                localPlayerMesh.rotation.y = Math.atan2(moveX, moveZ);
+            }
+
+            // Gravity Physics & Ground Floor Alignment
+            localPlayerMesh.position.y += velocityY;
+            if (localPlayerMesh.position.y > 0) {
+                velocityY -= 0.015; // Realistic gravity
+                isGrounded = false;
+            } else {
+                localPlayerMesh.position.y = 0;
+                velocityY = 0;
+                isGrounded = true;
+                localPlayerState.isJumping = false;
+            }
+
+            localPlayerState.x = localPlayerMesh.position.x;
+            localPlayerState.y = localPlayerMesh.position.y;
+            localPlayerState.z = localPlayerMesh.position.z;
+            localPlayerState.rotY = localPlayerMesh.rotation.y;
+
+            // Sword Swing Animation
+            if (swordMesh) {
+                if (swordSwingAngle > 0) {
+                    swordMesh.rotation.z = -Math.sin(swordSwingAngle) * 1.5;
+                    swordSwingAngle -= 0.15;
+                } else {
+                    swordMesh.rotation.z = 0;
+                }
+            }
+
+            animateAvatarLegs(localPlayerMesh, localPlayerState.isMoving);
+
+            // Camera Tracking Player
+            camera.position.x = localPlayerMesh.position.x;
+            camera.position.z = localPlayerMesh.position.z + 14;
+            camera.position.y = localPlayerMesh.position.y + 7;
+            camera.lookAt(localPlayerMesh.position.x, localPlayerMesh.position.y + 2, localPlayerMesh.position.z);
+
+            // Sync with Room Peers
+            if (isGameStarted) {
+                broadcastData({ type: 'SYNC_PLAYER', state: localPlayerState });
+            }
+
+            renderer.render(scene, camera);
+        }
+
+        function animateAvatarLegs(mesh, isMoving) {
+            const leftLeg = mesh.getObjectByName('leftLeg');
+            const rightLeg = mesh.getObjectByName('rightLeg');
+            if (leftLeg && rightLeg) {
+                if (isMoving) {
+                    const time = Date.now() * 0.012;
+                    leftLeg.rotation.x = Math.sin(time) * 0.6;
+                    rightLeg.rotation.x = -Math.sin(time) * 0.6;
+                } else {
+                    leftLeg.rotation.x = 0;
+                    rightLeg.rotation.x = 0;
+                }
+            }
+        }
+
+        function setupMobileJoystick() {
+            const container = document.getElementById('joystick-container');
+            const knob = document.getElementById('joystick-knob');
+            let active = false;
+
+            container.addEventListener('touchstart', () => active = true);
+            container.addEventListener('touchmove', (e) => {
+                if (!active) return;
+                const touch = e.touches[0];
+                const rect = container.getBoundingClientRect();
+                const centerX = rect.left + rect.width / 2;
+                const centerY = rect.top + rect.height / 2;
+
+                let dx = touch.clientX - centerX;
+                let dy = touch.clientY - centerY;
+                const dist = Math.hypot(dx, dy);
+                const maxDist = 40;
+
+                if (dist > maxDist) {
+                    dx = (dx / dist) * maxDist;
+                    dy = (dy / dist) * maxDist;
+                }
+
+                knob.style.transform = `translate(${dx}px, ${dy}px)`;
+                joystickVector.x = dx / maxDist;
+                joystickVector.y = dy / maxDist;
+            });
+
+            const resetJoystick = () => {
+                active = false;
+                knob.style.transform = `translate(0px, 0px)`;
+                joystickVector = { x: 0, y: 0 };
+            };
+
+            container.addEventListener('touchend', resetJoystick);
+            container.addEventListener('touchcancel', resetJoystick);
+        }
+
+        function onResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+    </script>
+</body>
+</html>
